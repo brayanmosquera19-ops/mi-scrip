@@ -48,13 +48,13 @@ pcall(function() if gethui then guiParent = gethui() end end)
 guiParent = guiParent or player:WaitForChild("PlayerGui")
 
 pcall(function()
-	local old = guiParent:FindFirstChild("SkinChanger")
+	local old = guiParent:FindFirstChild("SkinChangerV2")
 	if old then old:Destroy() end
 end)
 
 local gui = mk("ScreenGui", {
-	Name = "SkinChanger", ResetOnSpawn = false, IgnoreGuiInset = true,
-	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999,
+	Name = "SkinChangerV2", ResetOnSpawn = false, IgnoreGuiInset = true,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 2147483647,
 }, guiParent)
 
 ------------------------------------------------------------
@@ -117,7 +117,36 @@ local function setPanel(v)
 	panel.Visible = v
 	fab.TextColor3 = v and Color3.fromRGB(255, 255, 100) or Color3.new(1, 1, 1)
 end
-fab.Activated:Connect(function() setPanel(not panel.Visible) end)
+-- Esfera arrastrable: toque corto abre/cierra, arrastrar la mueve
+local fDrag, fStart, fOrigin, fMoved = false, nil, nil, false
+fab.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.Touch
+		or i.UserInputType == Enum.UserInputType.MouseButton1 then
+		fDrag, fMoved = true, false
+		fStart, fOrigin = i.Position, fab.AbsolutePosition
+	end
+end)
+UIS.InputChanged:Connect(function(i)
+	if not fDrag then return end
+	if i.UserInputType ~= Enum.UserInputType.Touch
+		and i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+	local d = i.Position - fStart
+	if d.Magnitude > 8 then fMoved = true end
+	if fMoved then
+		local sc = gui.AbsoluteSize
+		fab.Position = UDim2.fromOffset(
+			math.clamp(fOrigin.X + d.X, 0, math.max(0, sc.X - 50)),
+			math.clamp(fOrigin.Y + d.Y, 0, math.max(0, sc.Y - 50)))
+	end
+end)
+UIS.InputEnded:Connect(function(i)
+	if not fDrag then return end
+	if i.UserInputType == Enum.UserInputType.Touch
+		or i.UserInputType == Enum.UserInputType.MouseButton1 then
+		fDrag = false
+		if not fMoved then setPanel(not panel.Visible) end
+	end
+end)
 closeBtn.Activated:Connect(function() setPanel(false) end)
 
 local dragging, dragStart, startPos = false, nil, nil
@@ -304,10 +333,11 @@ local plScroll = mk("ScrollingFrame", {
 	BackgroundColor3 = Color3.fromRGB(18, 12, 26), BorderSizePixel = 0,
 	ScrollBarThickness = 4, ScrollBarImageColor3 = C_LINE,
 	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 22,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	ElasticBehavior = Enum.ElasticBehavior.Never, ZIndex = 22,
 }, panel)
 corner(7, plScroll)
-mk("UIListLayout", {Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.Name}, plScroll)
+mk("UIListLayout", {Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder}, plScroll)
 mk("UIPadding", {PaddingTop = UDim.new(0, 3), PaddingLeft = UDim.new(0, 3),
 	PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 3)}, plScroll)
 
@@ -328,10 +358,11 @@ local srcScroll = mk("ScrollingFrame", {
 	BackgroundColor3 = Color3.fromRGB(12, 16, 26), BorderSizePixel = 0,
 	ScrollBarThickness = 4, ScrollBarImageColor3 = Color3.fromRGB(70, 130, 210),
 	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 22,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	ElasticBehavior = Enum.ElasticBehavior.Never, ZIndex = 22,
 }, panel)
 corner(7, srcScroll)
-mk("UIListLayout", {Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.Name}, srcScroll)
+mk("UIListLayout", {Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder}, srcScroll)
 mk("UIPadding", {PaddingTop = UDim.new(0, 3), PaddingLeft = UDim.new(0, 3),
 	PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 3)}, srcScroll)
 
@@ -355,8 +386,11 @@ local function refreshListas()
 	end
 
 	local list = {}
-	for _, p in ipairs(Players:GetPlayers()) do table.insert(list, p) end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player and p.Parent == Players then table.insert(list, p) end
+	end
 	table.sort(list, function(a, b) return a.Name:lower() < b.Name:lower() end)
+	table.insert(list, 1, player)  -- tú siempre primero y fijo en las dos listas
 
 	if targetPlayer and targetPlayer.Parent ~= Players then
 		targetPlayer = nil
@@ -381,9 +415,9 @@ local function refreshListas()
 		return #list
 	end
 
-	for _, p in ipairs(list) do
+	for idx, p in ipairs(list) do
 		local b1 = mk("TextButton", {
-			Name = tostring(p.UserId), Size = UDim2.new(1, 0, 0, 28),
+			Name = tostring(p.UserId), LayoutOrder = idx, Size = UDim2.new(1, 0, 0, 28),
 			BackgroundColor3 = (targetPlayer == p) and C_SEL or C_ROW,
 			Text = etiquetaDe(p), TextColor3 = C_TEXT, TextSize = 11, Font = Enum.Font.Gotham,
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -403,7 +437,7 @@ local function refreshListas()
 		end)
 
 		local b2 = mk("TextButton", {
-			Name = tostring(p.UserId), Size = UDim2.new(1, 0, 0, 28),
+			Name = tostring(p.UserId), LayoutOrder = idx, Size = UDim2.new(1, 0, 0, 28),
 			BackgroundColor3 = (sourcePlayer == p) and C_SEL2 or C_ROW,
 			Text = etiquetaDe(p), TextColor3 = C_TEXT, TextSize = 11, Font = Enum.Font.Gotham,
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -448,12 +482,13 @@ local scroll = mk("ScrollingFrame", {
 	Size = UDim2.new(1, -12, 0, PANEL_H - ACTIONS_Y - 28),
 	Position = UDim2.fromOffset(6, ACTIONS_Y),
 	BackgroundTransparency = 1, BorderSizePixel = 0,
-	ScrollBarThickness = 4, ScrollBarImageColor3 = C_LINE,
+	ScrollBarThickness = 6, ScrollBarImageColor3 = C_LINE,
 	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 21,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	ElasticBehavior = Enum.ElasticBehavior.Never, ZIndex = 21,
 }, panel)
 mk("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
-mk("UIPadding", {PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 6)}, scroll)
+mk("UIPadding", {PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 6)}, scroll)
 
 local order = 0
 local function nextOrder() order += 1; return order end
@@ -705,7 +740,8 @@ local amigosScroll = mk("ScrollingFrame", {
 	BackgroundColor3 = Color3.fromRGB(22, 14, 34), BorderSizePixel = 0,
 	ScrollBarThickness = 4, ScrollBarImageColor3 = C_LINE,
 	CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 22,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	ElasticBehavior = Enum.ElasticBehavior.Never, ZIndex = 22,
 }, scroll)
 corner(7, amigosScroll)
 mk("UIListLayout", {Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder}, amigosScroll)
@@ -862,4 +898,4 @@ end)
 ------------------------------------------------------------
 refreshListas()
 setPanel(false)
-print("✅ Skin Changer cargado | toca 🧍 para abrir")
+print("✅ Skin Changer v2 cargado | toca 🧍 para abrir")
